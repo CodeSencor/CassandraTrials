@@ -1,10 +1,11 @@
 using System.IO.Pipes;
+using CassandraTrials.Services.Interfaces;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace CassandraTrials.HostedServices;
 
-public class CommandListener(ILogger<CommandListener> logger) : BackgroundService
+public class CommandListener(ICommandProcessorService commandProcessorService, ILogger<CommandListener> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -19,7 +20,20 @@ public class CommandListener(ILogger<CommandListener> logger) : BackgroundServic
             logger.LogInformation("Client connected.");
 
             using var reader = new StreamReader(pipe);
-            using var writer = new StreamWriter(pipe);
+            await using var writer = new StreamWriter(pipe);
+            writer.AutoFlush = true;
+
+            var content = await reader.ReadToEndAsync(stoppingToken);
+            var command = commandProcessorService.ReadCommand(content);
+            if (command is null)
+            {
+                logger.LogInformation("Malformed command received. Skipping.");
+                await writer.WriteLineAsync("NAK");
+                continue;
+            }
+
+            logger.LogInformation("Command {command} received. Pushing to execution queue.", command.Name);
+            await writer.WriteLineAsync("ACK");
         }
     }
 }
