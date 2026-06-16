@@ -1,3 +1,4 @@
+using System.IO.Pipes;
 using System.Text.Json;
 
 namespace CassandraTrials.Commands;
@@ -19,7 +20,10 @@ public class GetReservation : ICommandHandler
 
         var response = reservation != null ? JsonSerializer.Serialize(reservation) : "Reservation not found";
 
-        await using var writer = new StreamWriter(context.Pipe);
+        await using var pipe = new NamedPipeServerStream("cas_cmd_response_channel");
+        await pipe.WaitForConnectionAsync();
+        await using var writer = new StreamWriter(pipe);
+        writer.AutoFlush = true;
         await writer.WriteLineAsync(response);
         await writer.WriteLineAsync("FIN");
     }

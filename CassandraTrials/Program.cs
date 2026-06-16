@@ -1,5 +1,8 @@
-﻿using CassandraTrials.Configuration;
+﻿using System.Threading.Channels;
+using CassandraTrials.Configuration;
+using CassandraTrials.Events;
 using CassandraTrials.HostedServices;
+using CassandraTrials.Models;
 using CassandraTrials.Services.Implementations;
 using CassandraTrials.Services.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +23,7 @@ class Program
         builder.Services.AddTransient<ICommandProcessorService, CommandProcessorService>();
         builder.Services.AddScoped<ICommandExecutionService, CommandExecutionService>();
 
+        builder.Services.AddSingleton(Channel.CreateUnbounded<CommandReceivedEventArgs>());
         builder.Services.AddHostedService<CommandListener>();
         builder.Services.AddHostedService<CommandQueuer>();
 

@@ -23,7 +23,7 @@ public class CommandExecutionService(ICassandraQueryInvocationService cassandraQ
         if (_tasks.TryGetValue(e.Command.Name, out var handler))
         {
             logger.LogInformation("Invoking command {command}", e.Command.Name);
-            await handler(new CommandContext { Pipe = e.Pipe, Command = e.Command, QueryInvocationService = cassandraQueryInvocationService, MapperService = cassandraMapperService});
+            await handler(new CommandContext { Command = e.Command, QueryInvocationService = cassandraQueryInvocationService, MapperService = cassandraMapperService});
         }
         else
         {

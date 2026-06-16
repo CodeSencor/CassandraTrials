@@ -7,7 +7,6 @@ namespace CassandraTrials.Commands;
 
 public sealed class CommandContext
 {
-    public NamedPipeServerStream Pipe { get; init; }
     public PipeCommand Command { get; init; }
     public ICassandraQueryInvocationService QueryInvocationService { get; init; }
     public ICassandraMapperService MapperService { get; init; }

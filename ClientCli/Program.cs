@@ -8,12 +8,12 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        await using var pipe = new NamedPipeClientStream("cas_cmd_channel");
+        await using var commandPipe = new NamedPipeClientStream("cas_cmd_channel");
         Console.WriteLine("Connecting to the server...");
-        await pipe.ConnectAsync();
+        await commandPipe.ConnectAsync();
         Console.WriteLine("Connection established.");
-        await using var writer = new StreamWriter(pipe);
-        using var reader = new StreamReader(pipe);
+        await using var commandWriter = new StreamWriter(commandPipe, leaveOpen: true);
+        commandWriter.AutoFlush = true;
         Console.WriteLine($"Invoking {args[0]} with args {args[1]}");
         var command = new PipeCommand
         {
@@ -21,15 +21,24 @@ class Program
             Args = args[1]
         };
         var packedCommand = JsonSerializer.Serialize(command);
-        await writer.WriteLineAsync(packedCommand);
+        await commandWriter.WriteLineAsync(packedCommand);
+        Console.WriteLine("Command sent. Connecting to the response channel...");
+        await using var responsePipe = new NamedPipeClientStream("cas_cmd_response_channel");
+        await responsePipe.ConnectAsync();
+        Console.WriteLine("Connected. Output:");
+        using var reader = new StreamReader(responsePipe, leaveOpen: true);
         while (true)
         {
             string? line = await reader.ReadLineAsync();
-            if (line is null or "FIN")
+            if (line is "NAK" or "FIN")
             {
                 break;
             }
-            Console.WriteLine(line);
+
+            if (line is not null)
+            {
+                Console.WriteLine(line);
+            }
         }
     }
 }

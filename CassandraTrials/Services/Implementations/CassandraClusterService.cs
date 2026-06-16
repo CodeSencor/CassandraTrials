@@ -20,7 +20,7 @@ public class CassandraClusterService(IOptions<CassandraClusterServiceOptions> op
                 return _cluster;
             }
 
-            _cluster = Cluster.Builder().AddContactPoints(options.Value.ContactPoints).Build();
+            _cluster = Cluster.Builder().AddContactPoints(options.Value.ContactPoints).WithPort(9042).Build();
             return _cluster;
         }
     }

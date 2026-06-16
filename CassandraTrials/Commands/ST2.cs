@@ -1,3 +1,4 @@
+using System.IO.Pipes;
 using System.Text.Json;
 using Cassandra;
 
@@ -10,29 +11,74 @@ public class ST2 : ICommandHandler
     public static async Task Execute(CommandContext context)
     {
         var flightId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-        var seats = new[] { "3A","3B","3C","3D","3E","4A","4B","4C","4D","4E" };
-        var clients = new[] { "stress_client_2a", "stress_client_2b", "stress_client_2c" };
-        var rng = new Random();
+        var seats = Enumerable.Range(1, 10)
+            .SelectMany(row => new[] { "A","B","C","D","E","F","G","H","I","J" }
+            .Select(col => $"{row}{col}"))
+            .ToArray();
 
-        var tasks = clients.Select(client => Task.Run(async () =>
+        foreach (var seat in seats)
+            await context.QueryInvocationService.Invoke(new SimpleStatement(
+                "DELETE FROM reservation WHERE flight_id = ? AND seat_no = ?;",
+                flightId, seat));
+
+        var operations = new List<Func<Task<string>>>(); 
+        foreach (var seat in seats)
         {
-            int success = 0, failed = 0;
-            foreach (var seat in seats.OrderBy(_ => rng.Next()))
+            operations.Add(async () =>
             {
-                var statement = new SimpleStatement(
+                RowSet r = await context.QueryInvocationService.Invoke(new SimpleStatement(
                     "INSERT INTO reservation (flight_id, seat_no, passenger_name, reservation_id) VALUES (?, ?, ?, uuid()) IF NOT EXISTS;",
-                    flightId, seat, client);
-                RowSet res = await context.QueryInvocationService.Invoke(statement);
-                if (res.First().GetValue<bool>("[applied]")) success++;
-                else failed++;
+                    flightId, seat, "st2_user"));
+                return r.First().GetValue<bool>("[applied]") ? "insert:ok" : "insert:rejected";
+            });
+            operations.Add(async () =>
+            {
+                RowSet r = await context.QueryInvocationService.Invoke(new SimpleStatement(
+                    "SELECT * FROM reservation WHERE flight_id = ? AND seat_no = ?;",
+                    flightId, seat));
+                return r.FirstOrDefault() != null ? "get:found" : "get:notfound";
+            });
+            operations.Add(async () =>
+            {
+                RowSet r = await context.QueryInvocationService.Invoke(new SimpleStatement(
+                    "UPDATE reservation SET passenger_name = ? WHERE flight_id = ? AND seat_no = ? IF EXISTS;",
+                    "st2_updated", flightId, seat));
+                return r.First().GetValue<bool>("[applied]") ? "update:ok" : "update:notfound";
+            });
+        }
+
+        async Task<(string client, int success, int fail)> RunClient(string clientName)
+        {
+            var rng = new Random();
+            int success = 0, fail = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                try
+                {
+                    var op = operations[rng.Next(operations.Count)];
+                    await op();
+                    success++;
+                }
+                catch (Exception)
+                {
+                    fail++;
+                }
             }
-            return $"{client}: booked {success}, rejected {failed}";
-        })).ToList();
+            return (clientName, success, fail);
+        }
 
-        var results = await Task.WhenAll(tasks);
+        var results = await Task.WhenAll(
+            Task.Run(() => RunClient("client_A")),
+            Task.Run(() => RunClient("client_B")),
+            Task.Run(() => RunClient("client_C"))
+        );
 
-        await using var writer = new StreamWriter(context.Pipe);
-        await writer.WriteLineAsync(string.Join("\n", results));
+        await using var pipe = new NamedPipeServerStream("cas_cmd_response_channel");
+        await pipe.WaitForConnectionAsync();
+        await using var writer = new StreamWriter(pipe);
+        writer.AutoFlush = true;
+        foreach (var (client, success, fail) in results)
+            await writer.WriteLineAsync($"{client}: success={success}/100, errors={fail}/100");
         await writer.WriteLineAsync("FIN");
     }
 }

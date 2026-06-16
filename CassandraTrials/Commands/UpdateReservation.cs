@@ -1,3 +1,4 @@
+using System.IO.Pipes;
 using System.Text.Json;
 using Cassandra;
 
@@ -22,8 +23,10 @@ public class UpdateReservation : ICommandHandler
         RowSet res = await context.QueryInvocationService.Invoke(statement);
         bool applied = res.First().GetValue<bool>("[applied]");
 
-        await using var writer = new StreamWriter(context.Pipe);
-        
+        await using var pipe = new NamedPipeServerStream("cas_cmd_response_channel");
+        await pipe.WaitForConnectionAsync();
+        await using var writer = new StreamWriter(pipe);
+        writer.AutoFlush = true;
         await writer.WriteLineAsync(applied ? "Reservation updated." : "Reservation not found.");
         await writer.WriteLineAsync("FIN");
     }

@@ -1,3 +1,4 @@
+using System.IO.Pipes;
 using Cassandra;
 using CassandraTrials.Models;
 using CassandraTrials.Services.Implementations;
@@ -21,19 +22,17 @@ public class MakeReservation : ICommandHandler
         var res = await context.QueryInvocationService.Invoke(statement);
         bool applied = res.First().GetValue<bool>("[applied]");
 
-        await using var writer = new StreamWriter(context.Pipe);
+        await using var pipe = new NamedPipeServerStream("cas_cmd_response_channel");
+        await pipe.WaitForConnectionAsync();
+        await using var writer = new StreamWriter(pipe);
+        writer.AutoFlush = true;
         if (!applied)
         {
             await writer.WriteLineAsync("Seat already taken.");
+            await writer.WriteLineAsync("FIN");
             return;
         }
 
-        await context.MapperService.GetMapper().InsertAsync(new Reservation
-        {
-            FlightId = flightId,
-            SeatNo = seatNo,
-            PassengerName = passengerName
-        });
         await writer.WriteLineAsync("Reservation made.");
         await writer.WriteLineAsync("FIN");
     }

@@ -1,4 +1,5 @@
 using System.Diagnostics.Eventing.Reader;
+using System.IO.Pipes;
 using System.Text;
 using Cassandra;
 
@@ -10,12 +11,21 @@ public class ST1 : ICommandHandler
 
     public static async Task Execute(CommandContext context)
     {
-        await using var writer = new StreamWriter(context.Pipe, Encoding.UTF8, 1024, leaveOpen: true);
-
         var flightId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-        var seats = new[] { "1A","1B","1C","1D","1E","2A","2B","2C","2D","2E" };
+        var seats = Enumerable.Range(1, 10)
+            .SelectMany(row => new[] { "A","B","C","D","E","F","G","H","I","J" }
+                .Select(col => $"{row}{col}"))
+                    .ToArray();
+        
+        foreach (var seat in seats)
+        {
+            await context.QueryInvocationService.Invoke(new SimpleStatement(
+                "DELETE FROM reservation WHERE flight_id = ? AND seat_no = ?;",
+                flightId, seat));
+        }
 
         int success = 0, failed = 0;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         foreach (var seat in seats)
         {
             var statement = new SimpleStatement(
@@ -25,8 +35,13 @@ public class ST1 : ICommandHandler
             if (res.First().GetValue<bool>("[applied]")) success++;
             else failed++;
         }
+        watch.Stop();
 
-        await writer.WriteLineAsync($"Stress test 1: booked = {success}, rejected = {failed}");
+        await using var pipe = new NamedPipeServerStream("cas_cmd_response_channel");
+        await pipe.WaitForConnectionAsync();
+        await using var writer = new StreamWriter(pipe);
+        writer.AutoFlush = true;
+        await writer.WriteLineAsync($"Stress test 1: elapsed time = {watch.ElapsedMilliseconds} milliseconds, booked = {success}, rejected = {failed}");
         await writer.WriteLineAsync("FIN");
     }
 }

@@ -1,3 +1,4 @@
+using System.IO.Pipes;
 using System.Text;
 using Cassandra;
 
@@ -14,37 +15,42 @@ public class ST3 : ICommandHandler
             .SelectMany(row => new[] { "A","B","C","D","E" }
                 .Select(col => $"{row}{col}")).ToArray();
 
-        var clientA = Task.Run(async () =>
+        foreach (var seat in seats)
+            await context.QueryInvocationService.Invoke(new SimpleStatement(
+                "DELETE FROM reservation WHERE flight_id = ? AND seat_no = ? IF EXISTS;",
+                flightId, seat));
+
+        async Task<string> RunClient(string party)
         {
-            int booked = 0;
+            int successes = 0, fails = 0, booked = 0;
             foreach (var seat in seats)
             {
-                var st = new SimpleStatement(
-                    "INSERT INTO reservation (flight_id, seat_no, passenger_name, reservation_id) VALUES (?, ?, ?, uuid()) IF NOT EXISTS;",
-                    flightId, seat, "party_A");
-                RowSet res = await context.QueryInvocationService.Invoke(st);
-                if (res.First().GetValue<bool>("[applied]")) booked++;
+                try
+                {
+                    var st = new SimpleStatement(
+                        "INSERT INTO reservation (flight_id, seat_no, passenger_name, reservation_id) VALUES (?, ?, ?, uuid()) IF NOT EXISTS;",
+                        flightId, seat, party);
+                    RowSet res = await context.QueryInvocationService.Invoke(st);
+                    successes++;
+                    if (res.First().GetValue<bool>("[applied]")) booked++;
+                }
+                catch (Exception)
+                {
+                    fails++;
+                }
             }
-            return $"party_A: booked {booked}";
-        });
+            return $"{party}: successes={successes}/50, fails={fails}/50, booked={booked}/50";
+        }
 
-        var clientB = Task.Run(async () =>
-        {
-            int booked = 0;
-            foreach (var seat in seats)
-            {
-                var st = new SimpleStatement(
-                    "INSERT INTO reservation (flight_id, seat_no, passenger_name, reservation_id) VALUES (?, ?, ?, uuid()) IF NOT EXISTS;",
-                    flightId, seat, "party_B");
-                RowSet res = await context.QueryInvocationService.Invoke(st);
-                if (res.First().GetValue<bool>("[applied]")) booked++;
-            }
-            return $"party_B: booked {booked}";
-        });
+        var results = await Task.WhenAll(
+            Task.Run(() => RunClient("party_A")),
+            Task.Run(() => RunClient("party_B"))
+        );
 
-        var results = await Task.WhenAll(clientA, clientB);
-
-        await using var writer = new StreamWriter(context.Pipe);
+        await using var pipe = new NamedPipeServerStream("cas_cmd_response_channel");
+        await pipe.WaitForConnectionAsync();
+        await using var writer = new StreamWriter(pipe);
+        writer.AutoFlush = true;
         await writer.WriteLineAsync(string.Join("\n", results));
         await writer.WriteLineAsync("FIN");
     }
