@@ -11,6 +11,11 @@ public class CommandExecutionService(ICassandraQueryInvocationService cassandraQ
     private readonly Dictionary<string, Func<CommandContext, Task>> _tasks = new(StringComparer.OrdinalIgnoreCase)
     {
         [MakeReservation.Name] = MakeReservation.Execute,
+        [GetReservation.Name] = GetReservation.Execute,
+        [UpdateReservation.Name] = UpdateReservation.Execute,
+        [ST1.Name] = ST1.Execute,
+        [ST2.Name] = ST2.Execute,
+        [ST3.Name] = ST3.Execute,
     };
 
     public async Task ExecuteAsync(CommandReceivedEventArgs e)

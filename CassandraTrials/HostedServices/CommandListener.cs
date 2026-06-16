@@ -22,8 +22,8 @@ public class CommandListener(ICommandProcessorService commandProcessorService, I
             await pipe.WaitForConnectionAsync(stoppingToken);
             logger.LogInformation("Client connected.");
 
-            using var reader = new StreamReader(pipe);
-            await using var writer = new StreamWriter(pipe);
+            using var reader = new StreamReader(pipe, leaveOpen: true);
+            await using var writer = new StreamWriter(pipe, leaveOpen: true);
             writer.AutoFlush = true;
 
             var content = await reader.ReadToEndAsync(stoppingToken);
@@ -36,8 +36,8 @@ public class CommandListener(ICommandProcessorService commandProcessorService, I
             }
 
             logger.LogInformation("Command {command} received. Pushing to execution queue.", command.Name);
-            CommandReceived?.Invoke(this, new CommandReceivedEventArgs(command, pipe));
             await writer.WriteLineAsync("ACK");
+            CommandReceived?.Invoke(this, new CommandReceivedEventArgs(command, pipe));
         }
     }
 }

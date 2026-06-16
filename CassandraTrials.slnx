@@ -1,3 +1,4 @@
 <Solution>
-  <Project Path="CassandraTrials.csproj" />
+  <Project Path="CassandraTrials/CassandraTrials.csproj" />
+  <Project Path="ClientCli/ClientCli.csproj" />
 </Solution>
