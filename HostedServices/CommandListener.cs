@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using CassandraTrials.Events;
 using CassandraTrials.Services.Interfaces;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,8 @@ namespace CassandraTrials.HostedServices;
 
 public class CommandListener(ICommandProcessorService commandProcessorService, ILogger<CommandListener> logger) : BackgroundService
 {
+    public event EventHandler<CommandReceivedEventArgs>? CommandReceived;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Starting {CommandListener}", nameof(CommandListener));
@@ -33,6 +36,7 @@ public class CommandListener(ICommandProcessorService commandProcessorService, I
             }
 
             logger.LogInformation("Command {command} received. Pushing to execution queue.", command.Name);
+            CommandReceived?.Invoke(this, new CommandReceivedEventArgs(command, pipe));
             await writer.WriteLineAsync("ACK");
         }
     }
