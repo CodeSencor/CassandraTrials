@@ -73,7 +73,7 @@ Activate keyspace: `USE flight_mgmt;`
 
 Create `Flight` table:
 ```
-  CREATE TABLE flight (
+CREATE TABLE flight (
   flight_id   uuid PRIMARY KEY,
   flight_no   text,
   origin      text,
